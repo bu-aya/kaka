@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Administrasi SDIT ANNIHAYAH</title>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Recharts Dependencies -->
+    <script crossorigin src="https://unpkg.com/prop-types@15.7.2/prop-types.js"></script>
+    <script crossorigin src="https://unpkg.com/react-is@18.2.0/umd/react-is.development.js"></script>
+    <script crossorigin src="https://unpkg.com/recharts@2.1.12/umd/Recharts.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; font-weight: 600; }
+        .tab-inactive { color: #6b7280; font-weight: 500; }
+        .tab-inactive:hover { color: #374151; border-bottom: 2px solid #d1d5db; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer } = window.Recharts;
+
+        // GANTI URL DI BAWAH DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbydulQ5qfVCG5U7PAF3Fom2uyjONcmkkD6a6Q0R-6qgrTRk7eRfQqT7wDRNhcNZm16I/exec"; 
+
+        // --- MOCK DATA ---
+        const initialStudents = [
+            { id: 1, nis: "2021001", nisn: "0123456789", nama: "Ahmad Budi", jk: "L", kelas: "1A", status: "Aktif", tahunAjaran: "2024/2025" },
+            { id: 2, nis: "2021002", nisn: "0123456780", nama: "Siti Aminah", jk: "P", kelas: "2B", status: "Aktif", tahunAjaran: "2024/2025" },
+            { id: 3, nis: "2019001", nisn: "0987654321", nama: "Reza Rahadian", jk: "L", kelas: "Lulus", status: "Lulus", tahunAjaran: "2023/2024", noIjazah: "DN-02/D-SD/123456", nilaiRata: 85.5 },
+            { id: 4, nis: "2022005", nisn: "1122334455", nama: "Bagas Putra", jk: "L", kelas: "Mutasi", status: "Mutasi Keluar", tahunAjaran: "2024/2025", sekolahTujuan: "SDN 1 Jakarta" }
+        ];
+
+        const initialSettings = {
+            tahunAjaranAktif: "2025/2026",
+            kepalaSekolah: "H. Abdullah, M.Pd",
+            // Wali Kelas sekarang menjadi objek untuk setiap kelas
+            waliKelasPerJenjang: {
+                "1A": "Siti Nurhaliza, S.Pd",
+                "1B": "Ahmad Dani, S.Pd",
+                "2A": "Rina Wijaya, S.Pd",
+                "2B": "Budi Santoso, S.Pd",
+                "3A": "Dewi Sartika, S.Pd",
+                "4A": "Eko Prasetyo, S.Pd",
+                "5A": "Fajar Hidayat, S.Pd",
+                "6A": "Gita Permata, S.Pd"
+            },
+            tglCetakRapor: "2025-12-18",
+            tglCetakTranskrip: "2026-06-20",
+            daftarKelas: ["1A", "1B", "2A", "2B", "3A", "4A", "5A", "6A"],
+            daftarTahun: ["2023/2024", "2024/2025", "2025/2026", "2026/2027"],
+            cptp: [
+                { id: 1, mapel: "Matematika", jenjang: "Kelas 1", cp: "Peserta didik dapat mengurutkan bilangan cacah sampai 100.", tp: "1. Membaca bilangan\n2. Menulis bilangan" },
+                { id: 2, mapel: "PAI", jenjang: "Kelas 1", cp: "Peserta didik mengenal rukun Islam.", tp: "1. Menyebutkan 5 rukun Islam\n2. Memahami makna Syahadat" }
+            ]
+        };
+
+        const mapelList = ["PAI", "PPKN", "B.Indo", "MTK", "IPAS", "IPA", "IPS", "SBDP", "PJOK", "B.Sunda", "B.Inggris"];
+
+        // --- HELPER FUNCTION: DOWNLOAD CSV ---
+        const downloadCSV = (filename, headers) => {
+            const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            alert(`Template ${filename} berhasil diunduh!`);
+        };
+
+        const PreviewModal = ({ isOpen, onClose, title, content }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+                        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                            <h3 className="font-bold text-gray-700">Preview: {title}</h3>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-800 font-bold">✕</button>
+                        </div>
+                        <div className="p-8 overflow-y-auto flex-1 bg-gray-100 flex justify-center">
+                            <div className="bg-white p-12 shadow-md w-full max-w-prose min-h-[400px]">
+                                {content}
+                            </div>
+                        </div>
+                        <div className="p-4 border-t flex justify-end gap-3 bg-white">
+                            <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Tutup</button>
+                            <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Cetak / Simpan PDF</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- MAIN APP COMPONENT ---
+        const App = () => {
+            const [activeMenu, setActiveMenu] = useState("dashboard");
+            const [students, setStudents] = useState(initialStudents);
+            const [settings, setSettings] = useState(initialSettings);
+            const [suratKeluar, setSuratKeluar] = useState([]);
+            
+            const [isLoading, setIsLoading] = useState(false);
+            
+            const [preview, setPreview] = useState({ isOpen: false, title: "", content: null });
+            const openPreview = (title, content) => setPreview({ isOpen: true, title, content });
+
+            useEffect(() => {
+                if(APPS_SCRIPT_URL !== "") {
+                    setIsLoading(true);
+                    fetch(APPS_SCRIPT_URL)
+                        .then(response => response.json())
+                        .then(res => {
+                            if(res.status === "success" && res.data) {
+                                setStudents(res.data);
+                            }
+                        })
+                        .catch(err => console.error("Gagal mengambil data Spreadsheet:", err))
+                        .finally(() => setIsLoading(false));
+                }
+            }, []);
+
+            // Helper to get active subjects based on year rules
+            const getActiveSubjects = (tahun) => {
+                const startYear = parseInt(tahun.split('/')[0]);
+                let active = [...mapelList];
+                if (startYear <= 2023) {
+                    active = active.filter(m => m !== "IPAS");
+                } else if (startYear >= 2024) {
+                    active = active.filter(m => m !== "IPA" && m !== "IPS");
+                }
+                return active;
+            };
+
+            const renderContent = () => {
+                switch(activeMenu) {
+                    case "dashboard": return <Dashboard students={students} />;
+                    case "siswa": return <DataSiswa students={students} setStudents={setStudents} />;
+                    case "nilai": return <NilaiLeger students={students} getActiveSubjects={getActiveSubjects} settings={settings} />;
+                    case "rapor": return <CetakRapor students={students} openPreview={openPreview} />;
+                    case "alumni": return <ArsipAlumni students={students} openPreview={openPreview} />;
+                    case "surat": return <ArsipSurat students={students} suratKeluar={suratKeluar} setSuratKeluar={setSuratKeluar} openPreview={openPreview} />;
+                    case "pengaturan": return <Pengaturan settings={settings} setSettings={setSettings} />;
+                    default: return <Dashboard students={students} />;
+                }
+            };
+
+            // Mengubah h-screen menjadi h-[800px] agar pas di embed postingan Blogger tanpa membuat double scroll bar
+            return (
+                <div className="flex h-[800px] w-full overflow-hidden bg-gray-100 border rounded-xl shadow-lg relative">
+                    
+                    {isLoading && (
+                        <div className="absolute inset-0 bg-white/70 z-50 flex flex-col items-center justify-center backdrop-blur-sm">
+                            <svg className="animate-spin h-10 w-10 text-blue-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span className="text-gray-700 font-medium">Sinkronisasi Database Spreadsheet...</span>
+                        </div>
+                    )}
+
+                    <PreviewModal 
+                        isOpen={preview.isOpen} 
+                        onClose={() => setPreview({ ...preview, isOpen: false })} 
+                        title={preview.title} 
+                        content={preview.content}
+                    />
+
+                    {/* Sidebar */}
+                    <div className="w-64 bg-blue-900 text-white flex flex-col shadow-xl z-10">
+                        <div className="p-5 border-b border-blue-800 text-center">
+                            <h1 className="text-2xl font-bold tracking-wider">SDIT ANNIHAYAH</h1>
+                            <p className="text-sm text-blue-300 mt-1">Sistem Administrasi</p>
+                        </div>
+                        <nav className="flex-1 py-4 overflow-y-auto">
+                            {[
+                                { id: "dashboard", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+                                { id: "siswa", label: "Data Siswa & Mutasi", icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
+                                { id: "nilai", label: "Nilai & Leger", icon: "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
+                                { id: "rapor", label: "Cetak Rapor", icon: "M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" },
+                                { id: "alumni", label: "Arsip Alumni", icon: "M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" },
+                                { id: "surat", label: "Arsip Surat", icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
+                                { id: "pengaturan", label: "Pengaturan", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" }
+                            ].map(item => (
+                                <button key={item.id} onClick={() => setActiveMenu(item.id)} className={`w-full flex items-center px-6 py-3 text-sm font-medium transition-colors ${activeMenu === item.id ? 'bg-blue-800 border-l-4 border-blue-400' : 'hover:bg-blue-800 hover:border-l-4 border-transparent'}`}>
+                                    <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon}></path></svg>
+                                    {item.label}
+                                </button>
+                            ))}
+                        </nav>
+                        <div className="p-4 bg-blue-950 text-xs text-center text-blue-400">
+                            &copy; 2026 SDIT Annihayah<br/>TA: {settings.tahunAjaranAktif}
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="flex-1 flex flex-col h-full overflow-hidden">
+                        <header className="bg-white shadow-sm z-0">
+                            <div className="px-6 py-4 flex justify-between items-center">
+                                <h2 className="text-xl font-semibold text-gray-800 capitalize">{activeMenu.replace('-', ' ')}</h2>
+                                <div className="flex items-center text-sm text-gray-600">
+                                    <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold mr-2">A</div>
+                                    <span>Administrator</span>
+                                </div>
+                            </div>
+                        </header>
+                        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6">
+                            {renderContent()}
+                        </main>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- COMPONENTS ---
+
+        const Dashboard = ({ students }) => {
+            const stats = {
+                aktif: students.filter(s => s.status === 'Aktif').length,
+                laki: students.filter(s => s.status === 'Aktif' && s.jk === 'L').length,
+                perempuan: students.filter(s => s.status === 'Aktif' && s.jk === 'P').length,
+                mutasiMasuk: students.filter(s => s.status === 'Mutasi Masuk').length,
+                mutasiKeluar: students.filter(s => s.status === 'Mutasi Keluar').length,
+                lulus: students.filter(s => s.status === 'Lulus').length,
+            };
+
+            const barData = [
+                { name: 'Aktif', Total: stats.aktif },
+                { name: 'Mutasi Masuk', Total: stats.mutasiMasuk },
+                { name: 'Mutasi Keluar', Total: stats.mutasiKeluar },
+                { name: 'Lulus', Total: stats.lulus }
+            ];
+
+            const pieData = [
+                { name: 'Laki-laki', value: stats.laki },
+                { name: 'Perempuan', value: stats.perempuan }
+            ];
+            const COLORS = ['#3b82f6', '#ec4899'];
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                        {[
+                            { label: 'Siswa Aktif', val: stats.aktif, color: 'bg-blue-100 text-blue-700' },
+                            { label: 'Laki-laki', val: stats.laki, color: 'bg-indigo-100 text-indigo-700' },
+                            { label: 'Perempuan', val: stats.perempuan, color: 'bg-pink-100 text-pink-700' },
+                            { label: 'Mutasi Masuk', val: stats.mutasiMasuk, color: 'bg-emerald-100 text-emerald-700' },
+                            { label: 'Mutasi Keluar', val: stats.mutasiKeluar, color: 'bg-orange-100 text-orange-700' },
+                            { label: 'Total Lulusan', val: stats.lulus, color: 'bg-purple-100 text-purple-700' }
+                        ].map((s, i) => (
+                            <div key={i} className={`${s.color} p-4 rounded-xl shadow-sm border border-white/50 flex flex-col items-center justify-center text-center`}>
+                                <span className="text-3xl font-bold mb-1">{s.val}</span>
+                                <span className="text-xs font-medium uppercase tracking-wider">{s.label}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white p-4 rounded-xl shadow-sm">
+                            <h3 className="text-lg font-semibold mb-4 text-gray-700">Grafik Status Siswa</h3>
+                            <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={barData}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                        <XAxis dataKey="name" />
+                                        <YAxis />
+                                        <Tooltip cursor={{fill: 'transparent'}} />
+                                        <Bar dataKey="Total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl shadow-sm">
+                            <h3 className="text-lg font-semibold mb-4 text-gray-700">Proporsi Jenis Kelamin (Siswa Aktif)</h3>
+                            <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value" label>
+                                            {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                                        </Pie>
+                                        <Tooltip />
+                                        <Legend />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const DataSiswa = ({ students, setStudents }) => {
+            const [search, setSearch] = useState("");
+            const [filterStatus, setFilterStatus] = useState("Semua");
+            
+            const handleTambahSiswaDummy = async () => {
+                const siswaBaru = {
+                    nis: "2023" + Math.floor(Math.random() * 1000),
+                    nisn: "001122" + Math.floor(Math.random() * 10000),
+                    nama: "Siswa Baru " + Math.floor(Math.random() * 100),
+                    jk: Math.random() > 0.5 ? "L" : "P",
+                    kelas: "1A",
+                    status: "Aktif",
+                    tahunAjaran: "2024/2025"
+                };
+
+                // Update UI langsung agar terasa cepat (Optimistic Update)
+                setStudents(prev => [...prev, {id: Date.now(), ...siswaBaru}]);
+
+                if(APPS_SCRIPT_URL !== "") {
+                    try {
+                        const response = await fetch(APPS_SCRIPT_URL, {
+                            method: "POST",
+                            headers: { "Content-Type": "text/plain" }, // Gunakan text/plain menghindari error CORS Preflight
+                            body: JSON.stringify({
+                                action: "tambah_siswa",
+                                data: siswaBaru
+                            })
+                        });
+                        const result = await response.json();
+                        if(result.status === "success") {
+                            // Berhasil disimpan di Spreadsheet
+                        }
+                    } catch (error) {
+                        alert("Gagal menyimpan ke Spreadsheet: " + error.message);
+                    }
+                } else {
+                    alert("Siswa ditambahkan secara lokal. Isi APPS_SCRIPT_URL untuk menyimpannya ke Spreadsheet.");
+                }
+            };
+
+            const handleDownloadTemplate = () => {
+                downloadCSV("template_import_siswa.csv", ["Nama", "NIS", "NISN", "Tempat Lahir", "Tanggal Lahir", "Jenis Kelamin", "Nama Ayah", "Kelas", "Status", "Tahun Ajaran"]);
+            };
+
+            const handleSimulasiImport = () => {
+                alert("Ini adalah simulasi import. Pada mode produksi, ini akan membaca file Excel/CSV yang Anda unggah.");
+            }
+
+            const filteredStudents = students.filter(s => {
+                const matchSearch = s.nama.toLowerCase().includes(search.toLowerCase()) || s.nis.includes(search) || s.nisn.includes(search);
+                const matchStatus = filterStatus === "Semua" || s.status === filterStatus;
+                return matchSearch && matchStatus;
+            });
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                        <div className="flex space-x-2 w-full md:w-auto">
+                            <input type="text" placeholder="Cari Nama / NIS / NISN..." className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-64" value={search} onChange={e => setSearch(e.target.value)} />
+                            <select className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                                <option value="Semua">Semua Status</option>
+                                <option value="Aktif">Aktif</option>
+                                <option value="Lulus">Lulus</option>
+                                <option value="Mutasi Masuk">Mutasi Masuk</option>
+                                <option value="Mutasi Keluar">Mutasi Keluar</option>
+                            </select>
+                        </div>
+                        <div className="flex space-x-2">
+                            <button onClick={handleDownloadTemplate} className="px-4 py-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg font-medium text-sm flex items-center">
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Template Excel
+                            </button>
+                            <button onClick={handleSimulasiImport} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium text-sm flex items-center">
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                Impor Data
+                            </button>
+                            <button onClick={handleTambahSiswaDummy} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center">
+                                + Tambah Siswa (Simulasi)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 text-gray-600 uppercase text-xs border-b">
+                                <tr>
+                                    <th className="px-4 py-3">NIS/NISN</th>
+                                    <th className="px-4 py-3">Nama Siswa</th>
+                                    <th className="px-4 py-3">L/P</th>
+                                    <th className="px-4 py-3">Kelas</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3 text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredStudents.map(s => (
+                                    <tr key={s.id} className="border-b hover:bg-gray-50">
+                                        <td className="px-4 py-3 font-medium text-gray-900">{s.nis}<br/><span className="text-xs text-gray-500">{s.nisn}</span></td>
+                                        <td className="px-4 py-3">{s.nama}</td>
+                                        <td className="px-4 py-3">{s.jk}</td>
+                                        <td className="px-4 py-3">{s.kelas}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium 
+                                                ${s.status === 'Aktif' ? 'bg-blue-100 text-blue-700' : 
+                                                  s.status === 'Lulus' ? 'bg-purple-100 text-purple-700' : 
+                                                  'bg-orange-100 text-orange-700'}`}>
+                                                {s.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button className="text-blue-600 hover:underline mr-3">Edit</button>
+                                            <button className="text-red-600 hover:underline">Hapus</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredStudents.length === 0 && (
+                                    <tr><td colSpan="6" className="text-center py-6 text-gray-500">Tidak ada data ditemukan</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const NilaiLeger = ({ students, getActiveSubjects, settings }) => {
+            const [selectedKelas, setSelectedKelas] = useState("1A");
+            const [selectedTahun, setSelectedTahun] = useState(settings.tahunAjaranAktif);
+            
+            const handleDownloadTemplateNilai = () => {
+                const mapelList = getActiveSubjects(selectedTahun);
+                const headers = ["NIS", "Nama", "Kelas", "Semester", ...mapelList, "Absensi_Sakit", "Absensi_Izin", "Absensi_Alpa", "Catatan_Guru"];
+                downloadCSV(`Template_Nilai_${selectedKelas}_${selectedTahun.replace('/', '-')}.csv`, headers);
+            };
+
+            const mapelAktif = getActiveSubjects(selectedTahun);
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                    <div className="flex justify-between items-end mb-6">
+                        <div className="flex space-x-4">
+                            <div>
+                                <label className="block text-sm text-gray-600 mb-1">Tahun Ajaran</label>
+                                <select className="border rounded-lg px-3 py-2 w-40" value={selectedTahun} onChange={e => setSelectedTahun(e.target.value)}>
+                                    {settings.daftarTahun.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm text-gray-600 mb-1">Kelas</label>
+                                <select className="border rounded-lg px-3 py-2 w-32" value={selectedKelas} onChange={e => setSelectedKelas(e.target.value)}>
+                                    {settings.daftarKelas.map(k => <option key={k} value={k}>{k}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex space-x-2">
+                            <button onClick={handleDownloadTemplateNilai} className="px-4 py-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg font-medium text-sm flex items-center">
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Template Excel
+                            </button>
+                            <button onClick={() => alert("Simulasi Impor Nilai")} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center">
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                Impor Nilai
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4 text-sm text-yellow-800">
+                        <strong>Info Kurikulum:</strong> Mata pelajaran yang ditampilkan telah disesuaikan secara otomatis berdasarkan Tahun Ajaran terpilih ({selectedTahun}).
+                    </div>
+
+                    <div className="overflow-x-auto border rounded-lg">
+                        <table className="w-full text-sm text-left whitespace-nowrap">
+                            <thead className="bg-gray-100 text-gray-700 uppercase text-xs border-b">
+                                <tr>
+                                    <th className="px-4 py-3 sticky left-0 bg-gray-100 border-r z-10 w-10">No</th>
+                                    <th className="px-4 py-3 sticky left-10 bg-gray-100 border-r z-10 w-48">Nama Siswa</th>
+                                    {mapelAktif.map(m => <th key={m} className="px-4 py-3 text-center">{m}</th>)}
+                                    <th className="px-4 py-3 bg-blue-50 text-center">S</th>
+                                    <th className="px-4 py-3 bg-blue-50 text-center">I</th>
+                                    <th className="px-4 py-3 bg-blue-50 text-center">A</th>
+                                    <th className="px-4 py-3 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {/* Mock Data Input */}
+                                <tr className="border-b hover:bg-gray-50">
+                                    <td className="px-4 py-2 sticky left-0 bg-white border-r z-10">1</td>
+                                    <td className="px-4 py-2 sticky left-10 bg-white border-r z-10 font-medium">Ahmad Budi</td>
+                                    {mapelAktif.map(m => (
+                                        <td key={m} className="px-2 py-2">
+                                            <input type="number" className="w-16 border rounded px-2 py-1 text-center focus:ring-1 focus:ring-blue-500" placeholder="0" />
+                                        </td>
+                                    ))}
+                                    <td className="px-2 py-2 bg-blue-50"><input type="number" className="w-12 border rounded px-1 py-1 text-center" /></td>
+                                    <td className="px-2 py-2 bg-blue-50"><input type="number" className="w-12 border rounded px-1 py-1 text-center" /></td>
+                                    <td className="px-2 py-2 bg-blue-50"><input type="number" className="w-12 border rounded px-1 py-1 text-center" /></td>
+                                    <td className="px-4 py-2 text-center">
+                                        <button className="text-blue-600 hover:underline text-xs">Simpan</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const CetakRapor = ({ students, openPreview }) => (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center">
+                <div className="max-w-md mx-auto py-12">
+                    <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Modul Cetak Rapor</h3>
+                    <p className="text-gray-500 text-sm mb-6">Pilih kelas dan siswa untuk menghasilkan dokumen rapor berformat PDF lengkap dengan absensi dan catatan guru.</p>
+                    <div className="flex gap-2 justify-center">
+                        <select className="border rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option>Pilih Kelas</option>
+                            <option>1A</option>
+                            <option>2B</option>
+                        </select>
+                        <button 
+                            onClick={() => openPreview("Rapor Semester", <div className="text-center text-gray-500 py-20">Preview Dokumen Rapor Siswa...</div>)}
+                            className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm flex items-center"
+                        >
+                            Preview & Cetak
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const ArsipAlumni = ({ students, openPreview }) => {
+            const alumni = students.filter(s => s.status === 'Lulus');
+            return (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                    <h3 className="text-lg font-semibold mb-6">Database Alumni & Transkrip Nilai</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {alumni.map(s => (
+                            <div key={s.id} className="border rounded-xl p-5 hover:shadow-md transition bg-gradient-to-br from-white to-gray-50">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h4 className="text-xl font-bold text-gray-800">{s.nama}</h4>
+                                        <p className="text-sm text-gray-500">NISN: {s.nisn} | Lulusan: {s.tahunAjaran}</p>
+                                    </div>
+                                    <span className="bg-purple-100 text-purple-800 text-xs px-3 py-1 rounded-full font-bold">LULUS</span>
+                                </div>
+                                <div className="bg-white p-3 rounded-lg border border-gray-100 text-sm mb-4">
+                                    <div className="flex justify-between mb-1">
+                                        <span className="text-gray-500">No. Ijazah:</span>
+                                        <span className="font-medium">{s.noIjazah}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Nilai Rata-rata:</span>
+                                        <span className="font-bold text-blue-600">{s.nilaiRata}</span>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button className="flex-1 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition">Detail Profil</button>
+                                    <button 
+                                        onClick={() => openPreview(`Transkrip ${s.nama}`, <div className="text-left text-sm"><h3>Transkrip Nilai: {s.nama}</h3><hr className="my-2"/><p>Data nilai akan dimuat di sini...</p></div>)}
+                                        className="flex-1 py-2 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg text-sm font-medium transition flex justify-center items-center"
+                                    >
+                                        Preview & Cetak
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                        {alumni.length === 0 && <p className="text-gray-500 text-sm">Belum ada data lulusan.</p>}
+                    </div>
+                </div>
+            );
+        };
+
+        const ArsipSurat = ({ students, suratKeluar, setSuratKeluar, openPreview }) => {
+            const [tab, setTab] = useState("Masuk");
+            
+            // State Form Surat Keluar
+            const [selectedSiswaId, setSelectedSiswaId] = useState("");
+            
+            // Derived Data
+            const selectedSiswa = students.find(s => s.id.toString() === selectedSiswaId);
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm p-0 overflow-hidden">
+                    <div className="flex border-b bg-gray-50">
+                        <button onClick={() => setTab("Masuk")} className={`flex-1 py-4 text-sm font-medium text-center ${tab === 'Masuk' ? 'tab-active bg-white' : 'tab-inactive'}`}>Surat Masuk</button>
+                        <button onClick={() => setTab("Keluar")} className={`flex-1 py-4 text-sm font-medium text-center ${tab === 'Keluar' ? 'tab-active bg-white' : 'tab-inactive'}`}>Surat Keluar</button>
+                    </div>
+                    
+                    <div className="p-6">
+                        {tab === "Masuk" ? (
+                            <div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-semibold text-gray-700">Manajemen Surat Masuk</h3>
+                                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">+ Tambah Surat Masuk</button>
+                                </div>
+                                <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-6">
+                                    <p className="text-sm text-blue-800">Upload dan simpan bukti fisik surat masuk (Dinas, Undangan, dll) dalam format PDF/JPG/PNG.</p>
+                                </div>
+                                <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-xl text-gray-400">
+                                    <p>Belum ada data surat masuk.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-700 mb-4">Form Penerbitan Surat Keluar</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-5 rounded-xl border border-gray-200">
+                                    {/* Kolom Kiri: Form Surat */}
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Jenis Surat</label>
+                                            <select className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                                                <option>Surat Keterangan Aktif</option>
+                                                <option>Surat Pindah (Mutasi)</option>
+                                                <option>Surat Kelulusan</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Siswa Terkait</label>
+                                            <select 
+                                                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                                                value={selectedSiswaId}
+                                                onChange={(e) => setSelectedSiswaId(e.target.value)}
+                                            >
+                                                <option value="">-- Pilih Siswa --</option>
+                                                {students.map(s => (
+                                                    <option key={s.id} value={s.id}>{s.nama} - {s.nis}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Surat</label>
+                                            <input type="text" className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Otomatis / Input Manual" />
+                                        </div>
+                                        <button 
+                                            onClick={() => openPreview("Surat Keluar", <div className="text-center">Preview Surat Keluar...</div>)}
+                                            className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium mt-2"
+                                        >
+                                            Preview & Cetak (PDF)
+                                        </button>
+                                    </div>
+                                    
+                                    {/* Kolom Kanan: Preview Data Siswa */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Detail Siswa (Auto-fill dari Database)</label>
+                                        <div className="bg-white p-4 rounded-lg border h-48 flex flex-col justify-center">
+                                            {selectedSiswa ? (
+                                                <div className="space-y-2 text-sm">
+                                                    <div className="flex justify-between border-b pb-1"><span className="text-gray-500">Nama:</span> <span className="font-semibold text-gray-800">{selectedSiswa.nama}</span></div>
+                                                    <div className="flex justify-between border-b pb-1"><span className="text-gray-500">NIS/NISN:</span> <span>{selectedSiswa.nis} / {selectedSiswa.nisn}</span></div>
+                                                    <div className="flex justify-between border-b pb-1"><span className="text-gray-500">Kelas saat ini:</span> <span>{selectedSiswa.kelas}</span></div>
+                                                    <div className="flex justify-between"><span className="text-gray-500">Status:</span> <span className="text-blue-600 font-medium">{selectedSiswa.status}</span></div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-center text-gray-400 text-sm">Pilih siswa pada form di samping untuk menampilkan detail otomatis.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const Pengaturan = ({ settings, setSettings }) => {
+            const [tab, setTab] = useState("Umum");
+
+            const updateWaliKelas = (kelas, nama) => {
+                const newWali = { ...settings.waliKelasPerJenjang, [kelas]: nama };
+                setSettings({...settings, waliKelasPerJenjang: newWali});
+            };
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                     <div className="flex border-b bg-gray-50">
+                        <button onClick={() => setTab("Umum")} className={`px-6 py-4 text-sm font-medium ${tab === 'Umum' ? 'tab-active bg-white' : 'tab-inactive'}`}>Sistem & Umum</button>
+                        <button onClick={() => setTab("CPTP")} className={`px-6 py-4 text-sm font-medium ${tab === 'CPTP' ? 'tab-active bg-white' : 'tab-inactive'}`}>Capaian & Tujuan Pembelajaran (CP & TP)</button>
+                    </div>
+
+                    <div className="p-6">
+                        {tab === "Umum" && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="space-y-6">
+                                    <h4 className="text-md font-semibold text-gray-800 border-b pb-2">Informasi Sekolah</h4>
+                                    <div><label className="block text-sm text-gray-600 mb-1">Nama Kepala Sekolah</label><input type="text" defaultValue={settings.kepalaSekolah} className="w-full border rounded p-2 focus:ring-1" /></div>
+                                    <div><label className="block text-sm text-gray-600 mb-1">Tahun Ajaran Aktif</label>
+                                        <select defaultValue={settings.tahunAjaranAktif} className="w-full border rounded p-2 focus:ring-1">
+                                            {settings.daftarTahun.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                    
+                                    <h4 className="text-md font-semibold text-gray-800 border-b pb-2 mt-6">Manajemen Wali Kelas</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {settings.daftarKelas.map(kelas => (
+                                            <div key={kelas}>
+                                                <label className="block text-xs text-gray-500 mb-1">Wali Kelas {kelas}</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={settings.waliKelasPerJenjang[kelas] || ""} 
+                                                    onChange={(e) => updateWaliKelas(kelas, e.target.value)}
+                                                    className="w-full border rounded p-2 text-sm focus:ring-1" 
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 className="text-md font-semibold text-gray-800 border-b pb-2">Pengaturan Cetak</h4>
+                                    <div className="space-y-4">
+                                        <div><label className="block text-sm text-gray-600 mb-1">Tanggal Cetak Rapor Default</label><input type="date" defaultValue={settings.tglCetakRapor} className="w-full border rounded p-2 focus:ring-1" /></div>
+                                        <div><label className="block text-sm text-gray-600 mb-1">Tanggal Cetak Transkrip Alumni</label><input type="date" defaultValue={settings.tglCetakTranskrip} className="w-full border rounded p-2 focus:ring-1" /></div>
+                                    </div>
+                                    <button className="mt-6 w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Simpan Pengaturan</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === "CPTP" && (
+                            <div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h4 className="text-md font-semibold text-gray-800">Manajemen CP & TP</h4>
+                                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">+ Tambah CP/TP</button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left border rounded-lg">
+                                        <thead className="bg-gray-100 text-gray-700">
+                                            <tr>
+                                                <th className="px-4 py-3 border-b w-32">Mata Pelajaran</th>
+                                                <th className="px-4 py-3 border-b w-24">Jenjang</th>
+                                                <th className="px-4 py-3 border-b">Capaian Pembelajaran (CP)</th>
+                                                <th className="px-4 py-3 border-b">Tujuan Pembelajaran (TP)</th>
+                                                <th className="px-4 py-3 border-b w-20 text-center">Aksi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {settings.cptp.map(item => (
+                                                <tr key={item.id} className="border-b hover:bg-gray-50 align-top">
+                                                    <td className="px-4 py-3 font-medium">{item.mapel}</td>
+                                                    <td className="px-4 py-3">{item.jenjang}</td>
+                                                    <td className="px-4 py-3 whitespace-pre-wrap text-gray-600">{item.cp}</td>
+                                                    <td className="px-4 py-3 whitespace-pre-wrap text-gray-600">{item.tp}</td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <button className="text-blue-600 hover:underline mr-2 text-xs">Edit</button>
+                                                        <button className="text-red-600 hover:underline text-xs">Del</button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="mt-4 p-4 bg-blue-50 text-blue-800 text-sm rounded-lg border border-blue-100">
+                                    Input CP dan TP ini akan otomatis terintegrasi (muncul sebagai deskripsi kompetensi) saat Anda melakukan proses Cetak Rapor berdasarkan jenjang kelas dan mata pelajaran.
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
